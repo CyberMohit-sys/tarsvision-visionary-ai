@@ -53,11 +53,7 @@ serve(async (req) => {
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are a professional AI image editor. Enhance this image transformation prompt to be more detailed and specific. Add details about style, lighting, color palette, and artistic direction. Keep it under 200 words.
-
-Original prompt: "${prompt}"
-
-Return ONLY the enhanced prompt text, nothing else.`
+              text: `You are a professional AI image editor. Enhance this image transformation prompt to be more detailed and specific. Add details about style, lighting, color palette, and artistic direction. Keep it under 200 words.\n\nOriginal prompt: "${prompt}"\n\nReturn ONLY the enhanced prompt text, nothing else.`
             }]
           }]
         }),
@@ -68,6 +64,10 @@ Return ONLY the enhanced prompt text, nothing else.`
     if (enhanceResponse.ok) {
       const enhanceData = await enhanceResponse.json();
       enhancedPrompt = enhanceData.candidates?.[0]?.content?.parts?.[0]?.text || prompt;
+    } else {
+      const enhanceError = await enhanceResponse.text();
+      console.error("Enhance prompt error:", enhanceResponse.status, enhanceError);
+      // Continue with original prompt if enhancement fails
     }
 
     // Step 2: Send image + prompt to Gemini multimodal for editing
@@ -98,7 +98,7 @@ Return ONLY the enhanced prompt text, nothing else.`
     if (!editResponse.ok) {
       const errText = await editResponse.text();
       console.error("Edit image error:", errText);
-      throw new Error("Failed to edit image");
+      throw new Error(`Image generation failed: ${editResponse.status} - ${errText}`);
     }
 
     const editData = await editResponse.json();
@@ -111,17 +111,29 @@ Return ONLY the enhanced prompt text, nothing else.`
       }
     }
 
+    if (images.length === 0) {
+      throw new Error("No images generated from API response");
+    }
+
     return new Response(JSON.stringify({ 
-      images, 
-      enhancedPrompt,
-      count: images.length 
+      success: true,
+      data: {
+        images, 
+        enhancedPrompt,
+        count: images.length 
+      }
     }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (e) {
     console.error("edit-image error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    const errorMessage = e instanceof Error ? e.message : "Unknown error";
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: errorMessage 
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
