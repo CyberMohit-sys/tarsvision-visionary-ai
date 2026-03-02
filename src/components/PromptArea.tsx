@@ -1,34 +1,122 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Upload, Image as ImageIcon, X } from "lucide-react";
+import { Sparkles, Upload, Image as ImageIcon, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { generateImage, editImage } from "@/lib/api";
+import { toast } from "sonner";
 
-export default function PromptArea() {
+// Context for sharing generation results
+export const GenerationContext = createContext<{
+  images: string[];
+  isLoading: boolean;
+  enhancedPrompt: string;
+  setImages: (imgs: string[]) => void;
+  setIsLoading: (v: boolean) => void;
+  setEnhancedPrompt: (p: string) => void;
+}>({
+  images: [],
+  isLoading: false,
+  enhancedPrompt: "",
+  setImages: () => {},
+  setIsLoading: () => {},
+  setEnhancedPrompt: () => {},
+});
+
+export function useGeneration() {
+  return useContext(GenerationContext);
+}
+
+interface PromptAreaProps {
+  style?: string;
+  aspectRatio?: string;
+  creativity?: number;
+  detail?: number;
+  lighting?: string;
+}
+
+export default function PromptArea({ style, aspectRatio, creativity, detail, lighting }: PromptAreaProps) {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("text");
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [uploadedMimeType, setUploadedMimeType] = useState<string>("image/jpeg");
   const [dragOver, setDragOver] = useState(false);
+  const { setImages, setIsLoading, isLoading, setEnhancedPrompt } = useGeneration();
+
+  const handleFile = useCallback((file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File exceeds 5MB limit");
+      return;
+    }
+    if (!/\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
+      toast.error("Only JPG, PNG, WEBP files allowed");
+      return;
+    }
+    setUploadedMimeType(file.type || "image/jpeg");
+    const reader = new FileReader();
+    reader.onload = () => setUploadedImage(reader.result as string);
+    reader.readAsDataURL(file);
+  }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.size <= 5 * 1024 * 1024 && /\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
-      const reader = new FileReader();
-      reader.onload = () => setUploadedImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
-  }, []);
+    if (file) handleFile(file);
+  }, [handleFile]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.size <= 5 * 1024 * 1024) {
-      const reader = new FileReader();
-      reader.onload = () => setUploadedImage(reader.result as string);
-      reader.readAsDataURL(file);
+    if (file) handleFile(file);
+  }, [handleFile]);
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) {
+      toast.error("Please enter a prompt");
+      return;
     }
-  }, []);
+
+    setIsLoading(true);
+    setImages([]);
+    setEnhancedPrompt("");
+
+    try {
+      if (mode === "text") {
+        const result = await generateImage({
+          prompt: prompt.trim(),
+          style,
+          aspectRatio,
+          creativity,
+          detail,
+          lighting,
+        });
+        setImages(result.images);
+        setEnhancedPrompt(result.enhancedPrompt);
+        toast.success(`Generated ${result.count} image(s)`);
+      } else {
+        if (!uploadedImage) {
+          toast.error("Please upload an image first");
+          setIsLoading(false);
+          return;
+        }
+        // Extract base64 data (remove data:image/...;base64, prefix)
+        const base64Data = uploadedImage.split(",")[1];
+        const result = await editImage({
+          prompt: prompt.trim(),
+          imageBase64: base64Data,
+          mimeType: uploadedMimeType,
+        });
+        setImages(result.images);
+        setEnhancedPrompt(result.enhancedPrompt);
+        toast.success("Image edited successfully");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-3xl mx-auto">
@@ -101,9 +189,15 @@ export default function PromptArea() {
             <Button
               size="lg"
               className="self-end px-8 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity font-display font-semibold tracking-wide"
+              onClick={handleGenerate}
+              disabled={isLoading}
             >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Generate
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              {isLoading ? "Generating…" : "Generate"}
             </Button>
           </div>
         </div>
