@@ -19,13 +19,15 @@ export default function EcosystemSection() {
           <p className="text-muted-foreground mb-8">
             TarsVision is part of the Tars Labs AI ecosystem — pushing boundaries in visual intelligence.
           </p>
-          <Button
-            size="lg"
-            className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity font-display font-semibold"
-          >
-            Open TARS AI
-            <ExternalLink className="w-4 h-4 ml-2" />
-          </Button>
+          <a href="https://tars-ai-blush.vercel.app/" target="_blank" rel="noopener noreferrer">
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity font-display font-semibold"
+            >
+              Open TARS AI
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </Button>
+          </a>
         </motion.div>
       </div>
     </section>

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Suspense, lazy } from "react";
 import PromptArea from "./PromptArea";
+import ParticleField from "./ParticleField";
 
 const FloatingOrb = lazy(() => import("./FloatingOrb"));
 
@@ -14,9 +15,13 @@ export default function HeroSection() {
         </div>
       </Suspense>
 
+      {/* Particle Field */}
+      <ParticleField />
+
       {/* Gradient orbs decoration */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-primary/10 blur-[120px] animate-pulse-glow" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-secondary/10 blur-[100px] animate-pulse-glow" style={{ animationDelay: "1.5s" }} />
+      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-secondary/10 blur-[100px] animate-pulse-glow" style={{ animationDelay: "1.5s" }}  />
+      <div className="absolute top-1/2 right-1/3 w-64 h-64 rounded-full bg-accent/5 blur-[80px] animate-pulse-glow" style={{ animationDelay: "3s" }} />
 
       <div className="relative z-10 container mx-auto px-4 pt-20">
         <motion.div
