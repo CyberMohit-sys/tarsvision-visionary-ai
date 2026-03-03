@@ -48,15 +48,20 @@ serve(async (req) => {
     );
 
     let enhancedPrompt = detailedPrompt;
-    if (enhanceResponse.ok) {
-      const enhanceData = await enhanceResponse.json();
-      const enhancedText = enhanceData.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (enhancedText) {
-        enhancedPrompt = enhancedText;
+    try {
+      if (enhanceResponse.ok) {
+        const enhanceData = await enhanceResponse.json();
+        const enhancedText = enhanceData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (enhancedText) {
+          enhancedPrompt = enhancedText;
+        }
+      } else {
+        const enhanceError = await enhanceResponse.text();
+        console.warn("Enhance prompt warning:", enhanceResponse.status, enhanceError);
+        // Continue with original prompt - enhancement is optional
       }
-    } else {
-      const enhanceError = await enhanceResponse.text();
-      console.warn("Enhance prompt warning:", enhanceResponse.status, enhanceError);
+    } catch (enhanceErr) {
+      console.warn("Enhance step failed, using original prompt:", enhanceErr);
     }
 
     // Step 2: Generate images using Gemini
