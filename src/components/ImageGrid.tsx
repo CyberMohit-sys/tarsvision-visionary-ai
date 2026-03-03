@@ -1,15 +1,25 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, RefreshCw, Wand2, ArrowUpCircle, Pencil } from "lucide-react";
 import { useGeneration } from "./PromptArea";
+import { addWatermark } from "@/lib/api";
 
 function ShimmerCard() {
   return <div className="aspect-square rounded-xl shimmer" />;
 }
 
 function ImageCard({ src, index }: { src: string; index: number }) {
+  const [watermarked, setWatermarked] = useState<string>(src);
+
+  useEffect(() => {
+    addWatermark(src)
+      .then(setWatermarked)
+      .catch(() => setWatermarked(src));
+  }, [src]);
+
   const handleDownload = () => {
     const a = document.createElement("a");
-    a.href = src;
+    a.href = watermarked;
     a.download = `tarsvision-${Date.now()}-${index}.png`;
     a.click();
   };
@@ -21,7 +31,7 @@ function ImageCard({ src, index }: { src: string; index: number }) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: index * 0.1 }}
     >
-      <img src={src} alt={`Generated image ${index + 1}`} className="w-full h-full object-cover" />
+      <img src={watermarked} alt={`Generated image ${index + 1}`} className="w-full h-full object-cover" />
       <div className="absolute inset-0 bg-background/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
         {[
           { icon: Download, label: "Download", onClick: handleDownload },
