@@ -175,7 +175,7 @@ export default function PromptArea({ style, aspectRatio, creativity, detail, lig
             </AnimatePresence>
           </TabsContent>
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -183,12 +183,12 @@ export default function PromptArea({ style, aspectRatio, creativity, detail, lig
                 ? "Describe the visual universe you want to create…"
                 : "Describe how you want to transform this image…"
               }
-              className="flex-1 bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground text-base min-h-[56px] max-h-32"
+              className="flex-1 bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground text-sm sm:text-base min-h-[56px] max-h-32"
               rows={2}
             />
             <Button
               size="lg"
-              className="self-end px-8 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity font-display font-semibold tracking-wide"
+              className="self-end sm:self-end px-6 sm:px-8 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity font-display font-semibold tracking-wide w-full sm:w-auto"
               onClick={handleGenerate}
               disabled={isLoading}
             >

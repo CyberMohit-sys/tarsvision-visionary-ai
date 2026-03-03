@@ -42,12 +42,12 @@ export default function AdvancedControls() {
                   <label className="text-sm font-medium text-foreground flex items-center gap-2 mb-3">
                     <Ratio className="w-4 h-4 text-accent" /> Aspect Ratio
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {aspectRatios.map((r) => (
                       <button
                         key={r}
                         onClick={() => setSelectedRatio(r)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                           selectedRatio === r
                             ? "bg-primary/20 text-primary border border-primary/30"
                             : "bg-muted/50 text-muted-foreground hover:bg-muted"
@@ -76,7 +76,7 @@ export default function AdvancedControls() {
                 </div>
 
                 {/* Lighting & Seed */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-foreground flex items-center gap-2 mb-3">
                       <Sun className="w-4 h-4 text-primary" /> Lighting Mode
