@@ -12,90 +12,103 @@ serve(async (req) => {
 
   try {
     const { prompt, style, aspectRatio, creativity, detail, lighting } = await req.json();
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     if (!prompt || typeof prompt !== 'string' || prompt.length > 2000) {
       return new Response(JSON.stringify({ error: "Invalid prompt" }), {
-        status: 400, 
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Build detailed prompt with style and parameters
     let detailedPrompt = prompt;
-    if (style) detailedPrompt += `\nStyle: ${style}`;
-    if (aspectRatio) detailedPrompt += `\nAspect Ratio: ${aspectRatio}`;
-    if (lighting) detailedPrompt += `\nLighting: ${lighting}`;
-    
-    // Step 1: Enhance the prompt
-    const enhanceResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `You are a professional AI image generator prompt optimizer. Enhance this prompt to be more detailed, vivid, and specific for image generation. Add details about style, composition, lighting, color palette, mood, and artistic direction. Keep it under 200 words and make it inspirational.\n\nOriginal prompt: "${detailedPrompt}"\n\nReturn ONLY the enhanced prompt text, nothing else.`
-            }]
-          }]
-        }),
-      }
-    );
+    if (style) detailedPrompt += `. Style: ${style}`;
+    if (aspectRatio) detailedPrompt += `. Aspect Ratio: ${aspectRatio}`;
+    if (lighting) detailedPrompt += `. Lighting: ${lighting}`;
+    if (detail) detailedPrompt += `. Detail level: ${detail}/100`;
+    if (creativity) detailedPrompt += `. Creativity: ${creativity}/100`;
 
+    // Step 1: Enhance the prompt using Lovable AI text model
     let enhancedPrompt = detailedPrompt;
     try {
+      const enhanceResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            {
+              role: "system",
+              content: "You are a professional AI image prompt optimizer. Enhance prompts to be more detailed, vivid, and specific for image generation. Add details about style, composition, lighting, color palette, mood, and artistic direction. Keep it under 200 words. Return ONLY the enhanced prompt text, nothing else."
+            },
+            { role: "user", content: detailedPrompt }
+          ],
+        }),
+      });
+
       if (enhanceResponse.ok) {
         const enhanceData = await enhanceResponse.json();
-        const enhancedText = enhanceData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (enhancedText) {
-          enhancedPrompt = enhancedText;
-        }
+        const enhancedText = enhanceData.choices?.[0]?.message?.content;
+        if (enhancedText) enhancedPrompt = enhancedText;
       } else {
-        const enhanceError = await enhanceResponse.text();
-        console.warn("Enhance prompt warning:", enhanceResponse.status, enhanceError);
-        // Continue with original prompt - enhancement is optional
+        console.warn("Enhance prompt warning:", enhanceResponse.status);
       }
     } catch (enhanceErr) {
       console.warn("Enhance step failed, using original prompt:", enhanceErr);
     }
 
-    // Step 2: Generate images using Gemini
-    const generateResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: enhancedPrompt
-            }]
-          }],
-          generationConfig: {
-            responseModalities: ["IMAGE"],
-          },
-        }),
-      }
-    );
+    // Step 2: Generate image using Lovable AI image model
+    const generateResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image",
+        messages: [
+          { role: "user", content: enhancedPrompt }
+        ],
+        modalities: ["image", "text"],
+      }),
+    });
 
     if (!generateResponse.ok) {
       const errText = await generateResponse.text();
       console.error("Generate image error:", generateResponse.status, errText);
-      throw new Error(`Image generation failed: ${generateResponse.status} - ${errText}`);
+
+      if (generateResponse.status === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (generateResponse.status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits in your workspace settings." }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Image generation failed: ${generateResponse.status}`);
     }
 
     const generateData = await generateResponse.json();
-    const parts = generateData.candidates?.[0]?.content?.parts || [];
-    
+    const message = generateData.choices?.[0]?.message;
+
     const images: string[] = [];
-    for (const part of parts) {
-      if (part.inlineData) {
-        images.push(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
+    if (message?.images) {
+      for (const img of message.images) {
+        if (img?.image_url?.url) {
+          images.push(img.image_url.url);
+        }
       }
     }
 
@@ -103,13 +116,10 @@ serve(async (req) => {
       throw new Error("No images generated from API response");
     }
 
-    return new Response(JSON.stringify({ 
-      success: true,
-      data: {
-        images, 
-        enhancedPrompt,
-        count: images.length 
-      }
+    return new Response(JSON.stringify({
+      images,
+      enhancedPrompt,
+      count: images.length,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -118,11 +128,8 @@ serve(async (req) => {
   } catch (e) {
     console.error("generate error:", e);
     const errorMessage = e instanceof Error ? e.message : "Unknown error";
-    return new Response(JSON.stringify({ 
-      success: false,
-      error: errorMessage 
-    }), {
-      status: 500, 
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
