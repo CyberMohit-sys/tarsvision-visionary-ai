@@ -12,8 +12,8 @@ serve(async (req) => {
 
   try {
     const { prompt, imageBase64, mimeType } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
 
     if (!prompt || typeof prompt !== 'string' || prompt.length > 2000) {
       return new Response(JSON.stringify({ error: "Invalid prompt" }), {
@@ -42,10 +42,47 @@ serve(async (req) => {
       });
     }
 
-    const imageDataUrl = `data:${imgMimeType};base64,${imageBase64}`;
+    // Try Gemini first, fall back to Lovable AI
+    const editResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: imgMimeType, data: imageBase64 } }
+            ]
+          }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+        }),
+      }
+    );
 
-    // Edit image using Lovable AI multimodal
-    const editResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    if (editResponse.ok) {
+      const editData = await editResponse.json();
+      const parts = editData.candidates?.[0]?.content?.parts || [];
+      const images: string[] = [];
+      for (const part of parts) {
+        if (part.inlineData) {
+          images.push(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
+        }
+      }
+      if (images.length > 0) {
+        return new Response(JSON.stringify({ images, enhancedPrompt: prompt, count: images.length }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Fallback to Lovable AI
+    console.log("Falling back to Lovable AI for image editing...");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("Image editing failed and no fallback available");
+
+    const imageDataUrl = `data:${imgMimeType};base64,${imageBase64}`;
+    const fallbackResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
@@ -53,59 +90,36 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-image",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: imageDataUrl } }
-            ]
-          }
-        ],
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: imageDataUrl } }
+          ]
+        }],
         modalities: ["image", "text"],
       }),
     });
 
-    if (!editResponse.ok) {
-      const errText = await editResponse.text();
-      console.error("Edit image error:", editResponse.status, errText);
-
-      if (editResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (editResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`Image editing failed: ${editResponse.status}`);
+    if (!fallbackResponse.ok) {
+      const errText = await fallbackResponse.text();
+      console.error("Fallback edit error:", fallbackResponse.status, errText);
+      throw new Error(`Image editing failed on both APIs`);
     }
 
-    const editData = await editResponse.json();
-    const message = editData.choices?.[0]?.message;
-
+    const fallbackData = await fallbackResponse.json();
+    const message = fallbackData.choices?.[0]?.message;
     const images: string[] = [];
     if (message?.images) {
       for (const img of message.images) {
-        if (img?.image_url?.url) {
-          images.push(img.image_url.url);
-        }
+        if (img?.image_url?.url) images.push(img.image_url.url);
       }
     }
 
-    if (images.length === 0) {
-      throw new Error("No images generated from API response");
-    }
+    if (images.length === 0) throw new Error("No images generated");
 
-    return new Response(JSON.stringify({
-      images,
-      enhancedPrompt: prompt,
-      count: images.length,
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ images, enhancedPrompt: prompt, count: images.length }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (e) {
